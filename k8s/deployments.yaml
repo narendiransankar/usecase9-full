@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-flask-deployment
+  labels:
+    app: api-flask
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-flask
+  template:
+    metadata:
+      labels:
+        app: api-flask
+    spec:
+      containers:
+      - name: api-flask
+        image: 012889719104.dkr.ecr.ap-south-1.amazonaws.com/api-flask-repo:v1
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5000
+        env:
+        - name: ENVIRONMENT
+          value: "prod"                  # example of passing environment variables to Flask
+        # Add other env vars or configs as needed (e.g., for connecting to any DB or API endpoints)
+      # Optionally, if pulling from ECR and not using IRSA for kubelet, ensure nodes have ECR read policy (done via IAM).
+      imagePullSecrets:
+      - name: ecr-creds                 # if using Kubernetes imagePullSecrets for ECR (not needed if nodes IAM has ECR access as we set)

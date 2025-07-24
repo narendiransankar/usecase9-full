@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-flask-ingress
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing          # external ALB
+    alb.ingress.kubernetes.io/target-type: ip                  # target pods directly (via IP)
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'   # expose HTTP on port 80
+    # alb.ingress.kubernetes.io/certificate-arn: <ACM-ARN>     # (if HTTPS is needed, provide an ACM certificate ARN and a HTTPS listener)
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    alb.ingress.kubernetes.io/healthcheck-path: "/health"      # assuming our Flask app has a /health endpoint
+    alb.ingress.kubernetes.io/healthcheck-port: "80"
+    alb.ingress.kubernetes.io/success-codes: "200,302"
+  labels:
+    app: api-flask
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /* 
+        pathType: Prefix
+        backend:
+          service:
+            name: api-flask-service
+            port:
+              number: 80

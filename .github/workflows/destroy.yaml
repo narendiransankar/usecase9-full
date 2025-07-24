@@ -1,0 +1,61 @@
+# .github/workflows/teardown.yml
+name: Teardown Pipeline — Destroy All Resources
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_ACCOUNT_ID: 012889719104
+  AWS_REGION: ap-south-1
+  CLUSTER_NAME: api-flask-cluster
+
+jobs:
+  destroy:
+    name: Destroy Everything
+    runs-on: ubuntu-latest
+    steps:
+      # 1️⃣ Checkout your repo
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      # 2️⃣ Authenticate to AWS via OIDC
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/oidc_role
+          aws-region: ${{ env.AWS_REGION }}
+
+      # 3️⃣ Install kubectl so we can delete k8s manifests
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: latest
+
+      # 4️⃣ Point kubectl at your EKS cluster
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+      # 5️⃣ Remove your application from the cluster
+      - name: Delete Kubernetes Manifests
+        run: |
+          kubectl delete -f k8s/ingress.yaml   --ignore-not-found
+          kubectl delete -f k8s/service.yaml   --ignore-not-found
+          kubectl delete -f k8s/deployment.yaml --ignore-not-found
+
+      # 6️⃣ Set up Terraform
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      # 7️⃣ Initialize Terraform
+      - name: Terraform Init
+        run: terraform init
+
+      # 8️⃣ Destroy all Terraform-managed AWS resources
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve
