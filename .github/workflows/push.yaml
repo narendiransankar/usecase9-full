@@ -1,4 +1,5 @@
-name: CI/CD Pipeline - Build, Infra Provision, Deploy
+# .github/workflows/ci-cd-pipeline.yml
+name: CI/CD Pipeline - Bootstrap IAM, Build Infra & Deploy
 
 on:
   # push:
@@ -20,8 +21,34 @@ env:
 
 jobs:
   # ───────────────────────────────────────────────────────
-  # 1️⃣ Build & Push Docker Image
+  # 0️⃣ Bootstrap IAM: Create OIDC Provider & Role
+  bootstrap-iam:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (static creds)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply IAM Only
+        run: terraform apply -auto-approve -target=module.iam
+
+  # ───────────────────────────────────────────────────────
+  # 1️⃣ Build & Push Docker Image (now OIDC works)
   build-push-image:
+    needs: bootstrap-iam
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,8 +56,8 @@ jobs:
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@v4.1.0
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/oidc_role
-          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume:     arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/oidc_role
+          aws-region:         ${{ env.AWS_REGION }}
 
       - uses: aws-actions/amazon-ecr-login@v2
 
@@ -49,7 +76,7 @@ jobs:
           docker push $REG/$ECR_REPO_NAME:v1
 
   # ───────────────────────────────────────────────────────
-  # 2️⃣ Terraform IaC (two-phase)
+  # 2️⃣ Terraform IaC (Core + In-Cluster Add-ons)
   terraform:
     needs: build-push-image
     runs-on: ubuntu-latest
@@ -59,15 +86,15 @@ jobs:
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@v4.1.0
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/oidc_role
-          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume:     arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/oidc_role
+          aws-region:         ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with: 
           terraform_version: 1.5.0
 
-      # Phase 1 ── Core Infra (VPC, ECR, EKS, IAM)
+      # Phase 1 ── Core Infra
       - name: Terraform Init
         run: terraform init
 
@@ -81,11 +108,11 @@ jobs:
       - name: Apply Core Infra
         run: terraform apply -auto-approve infra.tfplan
 
-      # Phase 2 ── In-cluster Add-ons (Monitoring, Ingress Controller)
-      - name: Plan In-Cluster Add-ons
+      # Phase 2 ── In-Cluster Add-ons
+      - name: Plan Add-ons
         run: terraform plan -out=k8s.tfplan
 
-      - name: Apply In-Cluster Add-ons
+      - name: Apply Add-ons
         run: terraform apply -auto-approve k8s.tfplan
 
   # ───────────────────────────────────────────────────────
@@ -99,18 +126,18 @@ jobs:
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@v4.1.0
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/oidc_role
-          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume:     arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/oidc_role
+          aws-region:         ${{ env.AWS_REGION }}
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
         with:
-          version: latest      
+          version: latest
 
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
 
-      - name: kubectl apply Manifests
+      - name: Apply k8s Manifests
         run: |
           kubectl apply -f k8s/deployment.yaml
           kubectl apply -f k8s/service.yaml
