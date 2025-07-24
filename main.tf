@@ -55,3 +55,16 @@ module "monitoring" {
   # cluster_oidc_provider_arn = data.aws_iam_openid_connect_provider.oidc.arn
   # cluster_oidc_provider_id  = data.aws_iam_openid_connect_provider.oidc.id
 }
+
+module "iam" {
+  source = "./modules/iam"
+
+  # Allow your GitHub repo(s). Adjust the globs to match your organization and repos:
+  github_sub_regex = [
+    "repo:narendiransankar/usecase9-full:*",   # all branches in that repo
+  ]
+  # Use the well-known GitHub Actions thumbprint:
+  oidc_thumbprint = "2B18947A6A9FC7764FD8B5FB18A863B0C6DAC24F"
+
+  role_name = "oidc_role"
+}
