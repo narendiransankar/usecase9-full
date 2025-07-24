@@ -1,0 +1,156 @@
+name: Build and Push to Eks
+on:
+  # push:
+  #   paths:
+  #     - '.github/workflows/apply.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+env:
+  AWS_REGION: ap-south-1
+
+jobs:
+  # build-push-Flask-app:
+  #   runs-on: ubuntu-latest
+  #   env:
+  #     IMAGE_NAME_FLASK: api-flask-repo
+  #     AWS_REGION: ap-south-1
+  #     DOCKER_DIR_FLASK: Api-Flask
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+
+  #     - name: Configure AWS credentials
+  #       uses: aws-actions/configure-aws-credentials@v4
+  #       with:
+  #         role-to-assume: arn:aws:iam::012889719104:role/oidc_role
+  #         aws-region: ap-south-1
+
+  #     - name: Login to Amazon ECR
+  #       id: login-ecr
+  #       uses: aws-actions/amazon-ecr-login@v2
+
+  #     - name: Ensure ECR Repositories Exist
+  #       run: |
+  #         aws ecr describe-repositories --repository-names "$IMAGE_NAME_FLASK" || \
+  #         aws ecr create-repository --repository-name "$IMAGE_NAME_FLASK"
+  #     - name: Build Flask Docker image
+  #       run: docker build -t $IMAGE_NAME_FLASK -f ${{ env.DOCKER_DIR_FLASK }}/Dockerfile ${{ env.DOCKER_DIR_FLASK }}
+      
+  #     - name: Tag Flask Docker image
+  #       run: |
+  #         ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
+  #         docker tag $IMAGE_NAME_FLASK:latest $ECR_REGISTRY/$IMAGE_NAME_FLASK:v1
+      
+  #     - name: Push Flask Docker image to ECR
+  #       run: |
+  #         ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
+  #         docker push $ECR_REGISTRY/$IMAGE_NAME_FLASK:v1
+
+  terraform:
+    name: "Terraform"
+    runs-on: ubuntu-latest
+    needs: build-push-Flask-app
+
+    env:
+      AWS_REGION: ap-south-1
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::012889719104:role/oidc_role
+          aws-region: ap-south-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.12.0
+
+      - name: Format Terraform code
+        run: terraform fmt -recursive
+        id: fmt
+
+      - name: Terraform Init
+        id: init
+        run: terraform init
+
+      - name: Terraform Plan
+        id: plan
+        run:  terraform plan
+        continue-on-error: true
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve 
+
+
+
+
+
+#name: Build and Deploy to AWS
+
+# on:
+#   # push:
+#     # branches: [main]
+#   workflow_dispatch:
+
+# env:
+#   AWS_REGION: ap-south-1
+#   EKS_REPO: 012889719104.dkr.ecr.ap-south-1.amazonaws.com/api-flask-repo
+
+# permissions:
+#   id-token: write
+#   contents: write
+
+# jobs:
+#   build-push-deploy:
+#     runs-on: ubuntu-latest
+
+#     defaults:
+#       run:
+#         working-directory: usecase9-full
+
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
+
+#       # OIDC AWS creds
+#       - name: Configure AWS credentials (OIDC)
+#         uses: aws-actions/configure-aws-credentials@v2
+#         with:
+#           role-to-assume: arn:aws:iam::012889719104:role/oidc_role
+#           aws-region: ${{ env.AWS_REGION }}
+
+#       - name: Login to Amazon ECR
+#         uses: aws-actions/amazon-ecr-login@v2
+
+#       # Patient Service build & push
+#       - name: Build eks Docker image
+#         run: |
+#           docker build -t $EKS_REPO:latest ./Api-Flask
+#           docker push $EKS_REPO:latest
+
+
+#       # Terraform deploy
+#       - name: Set up Terraform
+#         uses: hashicorp/setup-terraform@v3
+
+#       - name: Terraform Init
+#         run: terraform init -reconfigure
+
+#       - name: Terraform Plan
+#         run: terraform plan
+
+#       - name: Terraform Apply
+#         run: terraform apply -auto-approve
