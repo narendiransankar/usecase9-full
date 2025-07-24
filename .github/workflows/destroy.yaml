@@ -2,7 +2,7 @@
 name: Teardown Pipeline — Destroy All Resources
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch: 
 
 permissions:
   contents: read
